@@ -4,6 +4,8 @@ from django.http import (HttpResponse, HttpResponseNotAllowed,
 from omeroweb.webclient.decorators import login_required
 from omeroweb.http import HttpJsonResponse
 
+from omeroweb.decorators import ConnCleaningHttpResponse
+
 import omero
 from omero.rtypes import rstring, rlong, wrap, unwrap
 
@@ -16,34 +18,24 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+@login_required()
+def get_files_for_obj(request, obj_type=None, obj_id=None, conn=None, **kwargs):
 
-@login_required(setGroupContext=True)
-def get_files_for_obj(request, conn=None, **kwargs):
-
-    if not request.GET:
+    if not request.method == 'GET':
         return HttpResponseNotAllowed('Methods allowed: GET')
 
-    # Check that one and only one object was requested
-    args = 0
-
-    image_id = request.GET.get('imageId')
-    dataset_id = request.GET.get('datasetId')
-    project_id = request.GET.get('projectId')
-    plate_id = request.GET.get('plateId')
-    screen_id = request.GET.get('screenId')
-
-    
-
-    reduce(lambda x, y: , [image_id, dataset_id, project_id, plate_id, screen_id])
+    if not obj_type:
+        return HttpResponseBadRequest('Must specify the type of object')
 
     if not obj_id:
-        return HttpResponseBadRequest('Object ID required')
+        return HttpResponseBadRequest('Must specify the id of object')
 
     obj_id = long(obj_id)
 
-    group_id = request.session.get('active_group')
-    if group_id is None:
-        group_id = conn.getEventContext().groupId
+    # group_id = request.session.get('active_group')
+    # if group_id is None:
+    #     group_id = conn.getEventContext().groupId
+    group_id = -1
 
     # Query config
     params = omero.sys.ParametersI()
@@ -53,62 +45,95 @@ def get_files_for_obj(request, conn=None, **kwargs):
 
     qs = conn.getQueryService()
 
-    # Obj might be Image, Dataset, Project, Plate, Screen
+    q = None
 
-    # Get the type of the object we have been asked to retrieve
-    q = """
-        SELECT
+    if obj_type == 'image':
+        q = """
+            SELECT orig.id, orig.name, orig.size, orig.hash
+            FROM FilesetEntry fse
+            JOIN fse.originalFile orig
+            JOIN fse.fileset fs
+            JOIN fs.images image
+            WHERE image.id = :oid
+            """
 
-        """
+    elif obj_type == 'plate':
+        q = """
+            SELECT orig.id, orig.name, orig.size, orig.hash
+            FROM FilesetEntry fse
+            JOIN fse.originalFile orig
+            WHERE fse.fileset IN (
+                SELECT DISTINCT image.fileset.id
+                FROM Well well
+                JOIN well.wellSamples ws
+                JOIN ws.image image
+                WHERE well.plate.id = :oid
+            )
+            """
 
-
-    # Get the tags that are applied to individual images
-    q = """
-        SELECT DISTINCT itlink.parent.id, itlink.child.id
-        FROM ImageAnnotationLink itlink
-        WHERE itlink.child.class=TagAnnotation
-        AND itlink.parent.id IN (:iids)
-        """
-
-    tags_on_images = {}
+    response = []
     for e in qs.projection(q, params, service_opts):
-        tags_on_images.setdefault(unwrap(e[0]), []).append(unwrap(e[1]))
+        print '\t'.join([str(x.val) if x is not None else 'None' for x in e])
+        response.append({
+            'id': e[0].val,
+            'name': e[1].val,
+            'size': e[2].val,
+            'hash': e[3].val
+        })
 
-    # Get the images' details
+    return HttpJsonResponse(response)
+
+# TODO Pass service_opts
+def omeroFileStream(id, size, conn, buf=2621440):
+    rfs = conn.createRawFileStore()
+    rfs.setFileId(id, conn.SERVICE_OPTS)
+
+    if size <= buf:
+        yield rfs.read(0, long(size))
+    else:
+        for pos in xrange(0, long(size), buf):
+            data = None
+            if size - pos < buf:
+                data = rfs.read(pos, size-pos)
+            else:
+                data = rfs.read(pos, buf)
+            yield data
+    rfs.close()
+
+@login_required(doConnectionCleanup=False)
+def download_file(request, file_id, conn=None, **kwargs):
+
+    file_id = long(file_id)
+
+    # Query config
+    group_id = -1
+    params = omero.sys.ParametersI()
+    service_opts = deepcopy(conn.SERVICE_OPTS)
+    service_opts.setOmeroGroup(group_id)
+    params.add('fid', wrap(file_id))
+
     q = """
-        SELECT new map(image.id AS id,
-               image.name AS name,
-               image.details.owner.id AS ownerId,
-               image AS image_details_permissions,
-               image.fileset.id AS filesetId,
-               filesetentry.clientPath AS clientPath)
-        FROM Image image
-        JOIN image.fileset fileset
-        JOIN fileset.usedFiles filesetentry
-        WHERE index(filesetentry) = 0
-        AND image.id IN (:iids)
-        ORDER BY lower(image.name), image.id
+        SELECT orig.size
+        FROM OriginalFile orig
+        WHERE orig.id = :fid
         """
 
-    images = []
+    qs = conn.getQueryService()
 
-    for e in qs.projection(q, params, service_opts):
-        e = unwrap(e)[0]
-        d = [e["id"],
-             e["name"],
-             e["ownerId"],
-             e["image_details_permissions"],
-             e["filesetId"],
-             e["clientPath"]]
-        images.append(_marshal_image(conn, d, tags_on_images))
+    # Query to ensure that the file exists and to confirm its size
+    results = qs.projection(q, params, service_opts)
 
-    # Get the users from this group for reference
-    users = tree.marshal_experimenters(conn, group_id=group_id, page=None)
+    if len(results) != 1:
+        raise Exception("File not found or no permission: %s" % file_id)
 
-    return HttpJsonResponse(
-        {
-            'tags': tags,
-            'images': images,
-            'users': users
-        }
-    )
+    # TODO Check for canDownload permission
+
+    size = results[0][0].val
+
+    rsp = ConnCleaningHttpResponse(omeroFileStream(file_id, size, conn))
+    rsp.conn = conn
+    rsp['Content-Length'] = size
+    # Use the id as the filename for want of something better
+    rsp['Content-Disposition'] = 'attachment; filename=%s' % ('partial-%s' % file_id)
+    rsp['Content-Type'] = 'application/force-download'
+    return rsp

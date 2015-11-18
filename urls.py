@@ -6,18 +6,17 @@ from . import views
 urlpatterns = patterns(
     'django.views.generic.simple',
 
-    url(r'^get_image_detail_and_tags/$',
-        views.get_image_detail_and_tags,
-        name="webtagging_get_image_detail_and_tags"),
+    # Get file list involved in object
+    url(
+        r'^get_files_for_obj/'
+        r'(?P<obj_type>project|dataset|image|screen|plate|well)?/'
+        r'(?P<obj_id>[0-9]+)$',
+        views.get_files_for_obj,
+        name="webexporter_get_files_for_obj"),
 
-    # process main form submission
-    url(r'^auto_tag/processUpdate/$',
-        views.process_update,
-        name="webtagging_process_update"),
-
-    # Create tags for tags dialog
-    url(r'^create_tag/$',
-        views.create_tag,
-        name="webtagging_create_tag"),
-
+    url(
+        r'^download_file/'
+        r'(?P<file_id>[0-9]+)$',
+        views.download_file,
+        name="webexporter_download_file"),
 )
