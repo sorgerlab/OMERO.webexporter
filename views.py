@@ -8,8 +8,6 @@ from omeroweb.decorators import ConnCleaningHttpResponse
 import omero
 from omero.rtypes import wrap
 
-from copy import deepcopy
-
 import logging
 
 logger = logging.getLogger(__name__)
@@ -35,8 +33,7 @@ def get_files_for_obj(request, obj_type=None, obj_id=None, conn=None, **kwargs):
 
     # Query config
     params = omero.sys.ParametersI()
-    service_opts = deepcopy(conn.SERVICE_OPTS)
-    service_opts.setOmeroGroup(group_id)
+    conn.SERVICE_OPTS.setOmeroGroup(group_id)
     params.add('oid', wrap(obj_id))
 
     qs = conn.getQueryService()
@@ -85,7 +82,7 @@ def get_files_for_obj(request, obj_type=None, obj_id=None, conn=None, **kwargs):
         return HttpResponseBadRequest('Image|Dataset|Plate supported')
 
     response = []
-    for e in qs.projection(q, params, service_opts):
+    for e in qs.projection(q, params, conn.SERVICE_OPTS):
         # print '\t'.join([str(x.val) if x is not None else 'None' for x in e])
         response.append({
             'id': e[0].val,
