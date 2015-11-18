@@ -1,5 +1,4 @@
-from django.http import (HttpResponse, HttpResponseNotAllowed,
-                         HttpResponseBadRequest)
+from django.http import HttpResponseNotAllowed, HttpResponseBadRequest, Http404
 
 from omeroweb.webclient.decorators import login_required
 from omeroweb.http import HttpJsonResponse
@@ -7,13 +6,10 @@ from omeroweb.http import HttpJsonResponse
 from omeroweb.decorators import ConnCleaningHttpResponse
 
 import omero
-from omero.rtypes import rstring, rlong, wrap, unwrap
+from omero.rtypes import wrap
 
 from copy import deepcopy
 
-from omeroweb.webclient import tree
-
-import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -57,6 +53,20 @@ def get_files_for_obj(request, obj_type=None, obj_id=None, conn=None, **kwargs):
             WHERE image.id = :oid
             """
 
+    elif obj_type == 'dataset':
+        q = """
+            SELECT orig.id, orig.name, orig.size, orig.hash
+            FROM FilesetEntry fse
+            JOIN fse.originalFile orig
+            WHERE fse.fileset IN (
+                SELECT DISTINCT image.fileset.id
+                FROM Dataset dataset
+                JOIN dataset.imageLinks diLink
+                JOIN diLink.child image
+                    WHERE dataset.id = :oid
+            )
+            """
+
     elif obj_type == 'plate':
         q = """
             SELECT orig.id, orig.name, orig.size, orig.hash
@@ -71,9 +81,12 @@ def get_files_for_obj(request, obj_type=None, obj_id=None, conn=None, **kwargs):
             )
             """
 
+    else:
+        return HttpResponseBadRequest('Image|Dataset|Plate supported')
+
     response = []
     for e in qs.projection(q, params, service_opts):
-        print '\t'.join([str(x.val) if x is not None else 'None' for x in e])
+        # print '\t'.join([str(x.val) if x is not None else 'None' for x in e])
         response.append({
             'id': e[0].val,
             'name': e[1].val,
@@ -81,9 +94,11 @@ def get_files_for_obj(request, obj_type=None, obj_id=None, conn=None, **kwargs):
             'hash': e[3].val
         })
 
+    if len(response) == 0:
+        raise Http404("Object not found")
+
     return HttpJsonResponse(response)
 
-# TODO Pass service_opts
 def omeroFileStream(id, size, conn, buf=2621440):
     rfs = conn.createRawFileStore()
     rfs.setFileId(id, conn.SERVICE_OPTS)
@@ -108,8 +123,7 @@ def download_file(request, file_id, conn=None, **kwargs):
     # Query config
     group_id = -1
     params = omero.sys.ParametersI()
-    service_opts = deepcopy(conn.SERVICE_OPTS)
-    service_opts.setOmeroGroup(group_id)
+    conn.SERVICE_OPTS.setOmeroGroup(group_id)
     params.add('fid', wrap(file_id))
 
     q = """
@@ -121,10 +135,10 @@ def download_file(request, file_id, conn=None, **kwargs):
     qs = conn.getQueryService()
 
     # Query to ensure that the file exists and to confirm its size
-    results = qs.projection(q, params, service_opts)
+    results = qs.projection(q, params, conn.SERVICE_OPTS)
 
     if len(results) != 1:
-        raise Exception("File not found or no permission: %s" % file_id)
+        raise Http404("File not found: %s" % file_id)
 
     # TODO Check for canDownload permission
 
