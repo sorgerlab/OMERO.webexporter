@@ -1,4 +1,5 @@
-from django.http import HttpResponseNotAllowed, HttpResponseBadRequest, Http404
+from django.http import (HttpResponse, HttpResponseNotAllowed,
+                         HttpResponseBadRequest, Http404)
 from omeroweb.webclient.decorators import login_required
 from omeroweb.decorators import ConnCleaningHttpResponse
 import omero
