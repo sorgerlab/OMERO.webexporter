@@ -1,13 +1,9 @@
 from django.http import HttpResponseNotAllowed, HttpResponseBadRequest, Http404
-
 from omeroweb.webclient.decorators import login_required
-from omeroweb.http import HttpJsonResponse
-
 from omeroweb.decorators import ConnCleaningHttpResponse
-
 import omero
 from omero.rtypes import wrap
-
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -94,7 +90,7 @@ def get_files_for_obj(request, obj_type=None, obj_id=None, conn=None, **kwargs):
     if len(response) == 0:
         raise Http404("Object not found")
 
-    return HttpJsonResponse(response)
+    return HttpResponse(json.dumps(response), content_type='json')
 
 def omeroFileStream(id, size, conn, buf=2621440):
     rfs = conn.createRawFileStore()
