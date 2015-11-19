@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import errno
 import hashlib
 import urllib2
 import json
@@ -37,12 +38,14 @@ def downloadfile(url, outfile):
         print "URL Error:", e.reason, url
 
 
-baseurl = 'http://localhost:8000/webexporter/'
+# baseurl = 'http://localhost:8000/webexporter/'
+baseurl = 'https://lincs-omero.hms.harvard.edu/webexporter/'
+
 outdir = 'test'
 mkdir(outdir)
 
 response = urllib2.urlopen(
-    baseurl + 'get_files_for_obj/image/251'
+    baseurl + 'get_files_for_obj/plate/3111'
 )
 files = json.load(response)
 
