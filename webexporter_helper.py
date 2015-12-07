@@ -6,6 +6,34 @@ import errno
 import hashlib
 import urllib2
 import json
+import argparse
+
+parser = argparse.ArgumentParser(
+    description='Download files for specified OMERO object'
+)
+parser.add_argument(
+    'baseurl',
+    type=str,
+    help='The base URL of the server. e.g. "https://example.com"'
+)
+parser.add_argument(
+    'type',
+    type=str,
+    choices=set(['project', 'dataset', 'image', 'screen', 'plate']),
+    help='The type of object to download, e.g. "plate" or "dataset"'
+)
+parser.add_argument(
+    'id',
+    type=int,
+    help='The ID of the object to download, e.g. "123"'
+)
+parser.add_argument(
+    'outdir',
+    type=str,
+    help='The directory to write to, e.g. "output_dir"'
+)
+
+args = parser.parse_args()
 
 def mkdir(path):
     try:
@@ -39,17 +67,13 @@ def downloadfile(url, outfile):
         print "URL Error:", e.reason, url
 
 
-baseurl = 'http://localhost:8000/webexporter/'
-# baseurl = 'https://lincs-omero.hms.harvard.edu/webexporter/'
+baseurl = "%s/webexporter/" % args.baseurl
+outdir = args.outdir
 
-outdir = 'test'
 mkdir(outdir)
 
 response = urllib2.urlopen(
-    # baseurl + 'get_files_for_obj/plate/3111'
-    # baseurl + 'get_files_for_obj/dataset/201'
-    # baseurl + 'get_files_for_obj/image/51'
-    baseurl + 'get_files_for_obj/project/102'
+    "%sget_files_for_obj/%s/%i" % (baseurl, args.type, args.id)
 )
 files = json.load(response)
 

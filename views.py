@@ -109,7 +109,9 @@ def get_files_for_obj(request, obj_type=None, obj_id=None, conn=None, **kwargs):
             """
 
     else:
-        return HttpResponseBadRequest('Image|Dataset|Plate supported')
+        return HttpResponseBadRequest(
+            'Image|Dataset|Project|Plate|Screen supported'
+        )
 
     response = []
     for e in qs.projection(q, params, conn.SERVICE_OPTS):
@@ -166,8 +168,6 @@ def download_file(request, file_id, conn=None, **kwargs):
 
     if len(results) != 1:
         raise Http404("File not found: %s" % file_id)
-
-    # TODO Check for canDownload permission
 
     size = results[0][0].val
 
