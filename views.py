@@ -99,7 +99,8 @@ def get_files_for_obj(request, obj_type=None, obj_id=None, conn=None, **kwargs):
             WHERE fse.fileset IN (
                 SELECT DISTINCT image.fileset.id
                 FROM Screen screen
-                JOIN screen.plateLinks plate
+                JOIN screen.plateLinks spLink
+                JOIN spLink.child plate
                 JOIN plate.wells well
                 JOIN well.wellSamples ws
                 JOIN ws.image image
