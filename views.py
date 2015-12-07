@@ -61,6 +61,22 @@ def get_files_for_obj(request, obj_type=None, obj_id=None, conn=None, **kwargs):
             )
             """
 
+    elif obj_type == 'project':
+        q = """
+            SELECT orig.id, orig.name, orig.size, orig.hash
+            FROM FilesetEntry fse
+            JOIN fse.originalFile orig
+            WHERE fse.fileset IN (
+                SELECT DISTINCT image.fileset.id
+                FROM Project project
+                JOIN project.datasetLinks pdLink
+                JOIN pdLink.child dataset
+                JOIN dataset.imageLinks diLink
+                JOIN diLink.child image
+                WHERE project.id = :oid
+            )
+            """
+
     elif obj_type == 'plate':
         q = """
             SELECT orig.id, orig.name, orig.size, orig.hash
@@ -72,6 +88,22 @@ def get_files_for_obj(request, obj_type=None, obj_id=None, conn=None, **kwargs):
                 JOIN well.wellSamples ws
                 JOIN ws.image image
                 WHERE well.plate.id = :oid
+            )
+            """
+    # TODO Test this on LINCS
+    elif obj_type == 'screen':
+        q = """
+            SELECT orig.id, orig.name, orig.size, orig.hash
+            FROM FilesetEntry fse
+            JOIN fse.originalFile orig
+            WHERE fse.fileset IN (
+                SELECT DISTINCT image.fileset.id
+                FROM Screen screen
+                JOIN screen.plateLinks plate
+                JOIN plate.wells well
+                JOIN well.wellSamples ws
+                JOIN ws.image image
+                WHERE screen.id = :oid
             )
             """
 
