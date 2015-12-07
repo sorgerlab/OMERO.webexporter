@@ -1,10 +1,10 @@
 import django
 if django.VERSION < (1, 6):
-    from django.conf.urls.defaults import url, patterns
+    from django.conf.urls.defaults import *
 else:
-    from django.conf.urls import url, patterns
+    from django.conf.urls import *
 
-from . import views
+from webexporter import views
 
 urlpatterns = patterns(
     'django.views.generic.simple',
