@@ -77,6 +77,14 @@ response = urllib2.urlopen(
 )
 files = json.load(response)
 
+# Check if there are any duplicate filenames
+if len(set([f['name'] for f in files])) < len(files):
+    print ('Error: Multiple files have the same names so there would be'
+           ' collisions when writing them to the output directory. Please file'
+           ' an issue on https://github.com/sorgerlab/OMERO.webexporter and'
+           ' this can be addressed')
+    sys.exit(1)
+
 for f in files:
     outfile = os.path.join(outdir, f['name'])
 
